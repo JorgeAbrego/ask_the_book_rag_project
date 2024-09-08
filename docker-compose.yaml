@@ -1,0 +1,173 @@
+# Airflow configuration for local development
+x-airflow-common:
+  &airflow-common
+  image: ${AIRFLOW_IMAGENAME:-apache/airflow:2.10.1-python3.10}
+  environment:
+    &airflow-common-env
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow_user:${PG_AIRFLOW_PWD}@postgres/airflow_db
+    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'false'
+    AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
+    AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
+    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
+    PG_VECTOR_PWD: ${PG_VECTOR_PWD}
+  volumes:
+    - ${PROJECT_PATH:-.}/airflow/dags:/opt/airflow/dags
+    - ${PROJECT_PATH:-.}/airflow/logs:/opt/airflow/logs
+  user: "${AIRFLOW_UID:-50000}:0"
+  depends_on:
+    &airflow-common-depends-on
+    postgres:
+      condition: service_healthy
+
+services:
+  #--------------------------------------------------------------------------------------------------------------------------------------#
+  # Postgres Services
+  #--------------------------------------------------------------------------------------------------------------------------------------#
+  # Postgres Server
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres_server
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
+      timeout: 25s
+      interval: 15s
+      retries: 3
+    restart: always
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./services/postgres:/docker-entrypoint-initdb.d
+    ports:
+      - 5432:5432
+  
+  # PgVector Server
+  pgvector:
+    image: pgvector/pgvector:0.7.4-pg16
+    container_name: pgvector_server
+    env_file:
+      - .env
+    healthcheck:
+      test: [ "CMD", "pg_isready", "-q", "-d", "postgres", "-U", "postgres" ]
+      timeout: 25s
+      interval: 15s
+      retries: 3
+    restart: always
+    volumes:
+      - pgvector_data:/var/lib/postgresql/data
+      - ./services/pgvector:/docker-entrypoint-initdb.d
+    ports:
+      - 5431:5432
+
+  # PgAdmin Client
+  pgadmin:
+    image: dpage/pgadmin4:8.11.0
+    container_name: pgadmin_client
+    env_file:
+      - .env
+    restart: always
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin
+    ports:
+      - 8888:80
+    depends_on:
+      - postgres
+      - pgvector
+
+  #---------------------------------------------------------------------------------------------------------------------------------#
+  # Airflow Services
+  #---------------------------------------------------------------------------------------------------------------------------------#
+  # Airflow Webserver
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: airflow_webserver
+    command: webserver
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+
+  # Airflow Scheduler
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: airflow_scheduler
+    command: scheduler
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8974/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+    restart: always
+    depends_on:
+      <<: *airflow-common-depends-on
+      airflow-init:
+        condition: service_completed_successfully
+  
+  # Airflow Init Service
+  airflow-init:
+    <<: *airflow-common
+    container_name: airflow_init
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        mkdir -p /sources/logs /sources/dags /sources/plugins
+        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins}
+        exec /entrypoint airflow version
+    environment:
+      <<: *airflow-common-env
+      _AIRFLOW_DB_UPGRADE: 'true'
+      _AIRFLOW_WWW_USER_CREATE: 'true'
+      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
+    user: "0:0"
+    volumes:
+      - ${AIRFLOW_PROJ_DIR:-.}:/sources
+
+  # Airflow Cli
+  airflow-cli:
+    <<: *airflow-common
+    container_name: airflow_cli
+    profiles:
+      - debug
+    environment:
+      <<: *airflow-common-env
+      CONNECTION_CHECK_MAX_COUNT: "0"
+    command:
+      - bash
+      - -c
+      - airflow
+
+  #-------------------------------------------------------------------------------------------------------------------------------------------#
+  # Docker Proxy
+  #-------------------------------------------------------------------------------------------------------------------------------------------#
+  docker-proxy:
+    build:
+        context: ./services/socat
+        dockerfile: Dockerfile
+    image: docker-socat:v1
+    container_name: docker-proxy
+    env_file:
+      - .env
+    command: "TCP4-LISTEN:2375,fork,reuseaddr UNIX-CONNECT:/var/run/docker.sock"
+    ports:
+      - "2376:2375"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+volumes:
+  postgres_data:
+  pgvector_data:
+  pgadmin_data:
