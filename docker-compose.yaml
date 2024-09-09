@@ -69,7 +69,7 @@ services:
       - .env
     restart: always
     volumes:
-      - pgadmin_data:/var/lib/pgadmin
+      - pgadmin_data:/var/lib/pgadmin      
     ports:
       - 8888:80
     depends_on:
@@ -166,6 +166,26 @@ services:
       - "2376:2375"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+
+  #-------------------------------------------------------------------------------------------------------------------------------------------#
+  # App Service
+  #-------------------------------------------------------------------------------------------------------------------------------------------#
+  app:
+    build:
+        context: ./services/app
+        dockerfile: Dockerfile
+    image: rag_app:v1
+    container_name: rag_app
+    environment:
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      HUGGINGFACEHUB_API_TOKEN: ${HUGGINGFACEHUB_API_TOKEN}
+      PG_APP_PWD: ${PG_APP_PWD}
+      PG_VECTOR_PWD: ${PG_VECTOR_PWD}
+    ports:
+      - "8501:8501"
+    depends_on:
+      - postgres
+      - pgvector
 
 volumes:
   postgres_data:
