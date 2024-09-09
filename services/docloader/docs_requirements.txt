@@ -1,0 +1,6 @@
+beautifulsoup4==4.12.3
+langchain==0.2.12
+langchain-community==0.2.11
+langchain_postgres==0.0.9
+langchain-huggingface==0.0.3
+pymupdf==1.24.9
