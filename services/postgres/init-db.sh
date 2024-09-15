@@ -39,6 +39,18 @@ PGPASSWORD=$PG_PREDICTION_PWD psql -v ON_ERROR_STOP=1 --username "app_user" --db
         completion_tokens INTEGER NOT NULL,
         total_tokens INTEGER NOT NULL,
         response_time FLOAT NOT NULL,
+        rating integer,
+        feedback TEXT NOT NULL,
+        eval_prompt_tokens INTEGER NOT NULL,
+        eval_completion_tokens INTEGER NOT NULL,
+        eval_total_tokens INTEGER NOT NULL,
+        timestamp TIMESTAMP WITH TIME ZONE NOT NULL
+    )
+
+    CREATE TABLE feedback (
+        id SERIAL PRIMARY KEY,
+        question_id TEXT REFERENCES conversations(id),
+        feedback INTEGER NOT NULL,
         timestamp TIMESTAMP WITH TIME ZONE NOT NULL
     )
 EOSQL
