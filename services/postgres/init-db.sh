@@ -29,7 +29,7 @@ PGPASSWORD=$POSTGRES_PASSWORD psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER
 EOSQL
 
 # Create tables in app_db
-PGPASSWORD=$PG_PREDICTION_PWD psql -v ON_ERROR_STOP=1 --username "app_user" --dbname "app_db" <<-EOSQL
+PGPASSWORD=$PG_APP_PWD psql -v ON_ERROR_STOP=1 --username "app_user" --dbname "app_db" <<-EOSQL
     CREATE TABLE requests (
         id TEXT PRIMARY KEY,
         question TEXT NOT NULL,
@@ -45,12 +45,12 @@ PGPASSWORD=$PG_PREDICTION_PWD psql -v ON_ERROR_STOP=1 --username "app_user" --db
         eval_completion_tokens INTEGER NOT NULL,
         eval_total_tokens INTEGER NOT NULL,
         timestamp TIMESTAMP WITH TIME ZONE NOT NULL
-    )
+    );
 
     CREATE TABLE feedback (
         id SERIAL PRIMARY KEY,
-        question_id TEXT REFERENCES conversations(id),
+        question_id TEXT REFERENCES requests(id),
         feedback INTEGER NOT NULL,
         timestamp TIMESTAMP WITH TIME ZONE NOT NULL
-    )
+    );
 EOSQL
